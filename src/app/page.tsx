@@ -27,6 +27,7 @@ export default function TradingSimulatorDashboard() {
 
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isApiAvailable, setIsApiAvailable] = useState(false);
 
   useEffect(() => {
     // Connect to WebSocket for L2 orderbook data
@@ -102,6 +103,22 @@ export default function TradingSimulatorDashboard() {
   ): Promise<void> => {
     setIsLoading(true);
     const startTime = performance.now();
+
+    // Check if API is available
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || ""}/health`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(1000), // 1 second timeout
+        },
+      );
+      setIsApiAvailable(response.ok);
+    } catch (error) {
+      console.warn("API health check failed:", error);
+      setIsApiAvailable(false);
+    }
 
     console.log("Running simulation with parameters:", parameters);
     console.log("Current orderbook data:", orderbookData);
@@ -184,13 +201,23 @@ export default function TradingSimulatorDashboard() {
           Analyze trade parameters and visualize expected outcomes with
           real-time market data
         </p>
-        <div className="flex items-center mt-2">
-          <div
-            className={`h-2 w-2 rounded-full mr-2 ${isConnected ? "bg-green-500" : "bg-red-500"}`}
-          ></div>
-          <span className="text-sm text-muted-foreground">
-            {isConnected ? "Connected to live data" : "Disconnected"}
-          </span>
+        <div className="flex items-center mt-2 space-x-4">
+          <div className="flex items-center">
+            <div
+              className={`h-2 w-2 rounded-full mr-2 ${isConnected ? "bg-green-500" : "bg-red-500"}`}
+            ></div>
+            <span className="text-sm text-muted-foreground">
+              {isConnected ? "Connected to live data" : "Disconnected"}
+            </span>
+          </div>
+          <div className="flex items-center">
+            <div
+              className={`h-2 w-2 rounded-full mr-2 ${isApiAvailable ? "bg-green-500" : "bg-yellow-500"}`}
+            ></div>
+            <span className="text-sm text-muted-foreground">
+              {isApiAvailable ? "API Connected" : "Using Local Simulation"}
+            </span>
+          </div>
         </div>
       </header>
 
