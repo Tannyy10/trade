@@ -5,24 +5,27 @@ import { Separator } from "./ui/separator";
 import { Clock, TrendingDown, Coins, Activity, Percent } from "lucide-react";
 
 interface MetricsDisplayProps {
-  slippage?: number;
-  fees?: number;
-  marketImpact?: number;
-  makerTakerProportion?: number;
-  processingLatency?: number;
-  uiUpdateSpeed?: number;
-  endToEndTiming?: number;
+  metrics?: {
+    slippage?: number;
+    fees?: number;
+    marketImpact?: number;
+    makerTakerProportion?: number;
+    processingLatency?: number;
+    uiUpdateSpeed?: number;
+    endToEndTiming?: number;
+  };
 }
 
-const MetricsDisplay = ({
-  slippage = 0.05,
-  fees = 0.001,
-  marketImpact = 0.12,
-  makerTakerProportion = 0.75,
-  processingLatency = 12,
-  uiUpdateSpeed = 8,
-  endToEndTiming = 45,
-}: MetricsDisplayProps) => {
+const MetricsDisplay = ({ metrics = {} }: MetricsDisplayProps) => {
+  const {
+    slippage = 0.05,
+    fees = 0.001,
+    marketImpact = 0.12,
+    makerTakerProportion = 0.75,
+    processingLatency = 12,
+    uiUpdateSpeed = 8,
+    endToEndTiming = 45,
+  } = metrics;
   return (
     <div className="w-full bg-background p-4 rounded-lg border border-border">
       <h2 className="text-xl font-semibold mb-4">Simulation Results</h2>

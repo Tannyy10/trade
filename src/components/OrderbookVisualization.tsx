@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,6 +15,14 @@ interface OrderbookData {
   asks: OrderbookEntry[];
   timestamp: number;
 }
+
+// Create default entry factory function to prevent undefined values
+const createDefaultEntry = (price: number): OrderbookEntry => ({
+  price: price,
+  size: 0,
+  total: 0,
+  percentage: 0,
+});
 
 interface OrderbookVisualizationProps {
   data?: OrderbookData;
@@ -44,27 +51,40 @@ const OrderbookVisualization = ({
   },
   maxDepth = 10,
 }: OrderbookVisualizationProps) => {
-  const [processedData, setProcessedData] = useState<OrderbookData>(data);
+  // Initialize with safe default data
+  const [processedData, setProcessedData] = useState<OrderbookData>({
+    bids: data?.bids || [],
+    asks: data?.asks || [],
+    timestamp: data?.timestamp || Date.now(),
+  });
   const [activeTab, setActiveTab] = useState<string>("orderbook");
 
   // Process the orderbook data to calculate totals and percentages
   useEffect(() => {
     if (!data) return;
 
-    const processData = (entries: OrderbookEntry[]) => {
+    const processData = (entries: OrderbookEntry[] = []) => {
       let runningTotal = 0;
       return entries.map((entry) => {
-        runningTotal += entry.size;
+        // Ensure entry has all required properties with defaults
+        const safeEntry = {
+          price: entry?.price ?? 0,
+          size: entry?.size ?? 0,
+          total: 0,
+          percentage: 0,
+        };
+
+        runningTotal += safeEntry.size;
         return {
-          ...entry,
+          ...safeEntry,
           total: runningTotal,
           percentage: 0, // Will be calculated after finding max total
         };
       });
     };
 
-    const processedBids = processData(data.bids.slice(0, maxDepth));
-    const processedAsks = processData(data.asks.slice(0, maxDepth));
+    const processedBids = processData((data.bids || []).slice(0, maxDepth));
+    const processedAsks = processData((data.asks || []).slice(0, maxDepth));
 
     // Calculate percentages based on the maximum total value
     const maxTotal = Math.max(
@@ -86,19 +106,59 @@ const OrderbookVisualization = ({
     setProcessedData({
       bids: calculatePercentages(processedBids),
       asks: calculatePercentages(processedAsks),
-      timestamp: data.timestamp,
+      timestamp: data.timestamp || Date.now(),
     });
   }, [data, maxDepth]);
+
+  // Safely get price from first ask or bid with fallback
+  const getFirstAskPrice = () => {
+    return processedData?.asks && processedData.asks.length > 0
+      ? (processedData.asks[0]?.price ?? 0)
+      : 0;
+  };
+
+  const getFirstBidPrice = () => {
+    return processedData?.bids && processedData.bids.length > 0
+      ? (processedData.bids[0]?.price ?? 0)
+      : 0;
+  };
+  // Calculate spread
+  const calculateSpread = () => {
+    const askPrice = getFirstAskPrice();
+    const bidPrice = getFirstBidPrice();
+
+    return {
+      absolute: askPrice - bidPrice,
+      percentage: bidPrice !== 0 ? ((askPrice - bidPrice) / bidPrice) * 100 : 0,
+    };
+  };
+
+  const spread = calculateSpread();
+  // For timestamp display - avoiding hydration errors
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    // This will only run on the client, not during server rendering
+    setMounted(true);
+  }, []);
 
   return (
     <Card className="w-full h-full bg-background">
       <CardHeader className="pb-2">
         <CardTitle className="text-xl flex justify-between items-center">
           <span>Orderbook Visualization</span>
-          <span className="text-sm text-muted-foreground">
-            Last updated:{" "}
-            {new Date(processedData.timestamp).toLocaleTimeString()}
-          </span>
+          {mounted ? (
+            <span className="text-sm text-muted-foreground">
+              Last updated:{" "}
+              {new Date(
+                processedData.timestamp || Date.now(),
+              ).toLocaleTimeString()}
+            </span>
+          ) : (
+            <span className="text-sm text-muted-foreground">
+              Last updated: Loading...
+            </span>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -117,68 +177,79 @@ const OrderbookVisualization = ({
 
               {/* Asks (sell orders) - displayed in reverse order */}
               <div className="col-span-3">
-                {processedData.asks
+                {(processedData.asks || [])
                   .slice()
                   .reverse()
-                  .map((ask, index) => (
-                    <div
-                      key={`ask-${index}`}
-                      className="grid grid-cols-3 text-sm py-1 relative"
-                    >
-                      <div className="text-red-500">{ask.price.toFixed(2)}</div>
-                      <div className="text-center">{ask.size.toFixed(4)}</div>
-                      <div className="text-right">{ask.total.toFixed(4)}</div>
+                  .map((ask, index) => {
+                    // Ensure ask has all required properties
+                    const safeAsk = {
+                      price: ask?.price ?? 0,
+                      size: ask?.size ?? 0,
+                      total: ask?.total ?? 0,
+                      percentage: ask?.percentage ?? 0,
+                    };
+
+                    return (
                       <div
-                        className="absolute right-0 top-0 h-full bg-red-500/10"
-                        style={{ width: `${ask.percentage}%` }}
-                      />
-                    </div>
-                  ))}
+                        key={`ask-${index}`}
+                        className="grid grid-cols-3 text-sm py-1 relative"
+                      >
+                        <div className="text-red-500">
+                          {safeAsk.price.toFixed(2)}
+                        </div>
+                        <div className="text-center">
+                          {safeAsk.size.toFixed(4)}
+                        </div>
+                        <div className="text-right">
+                          {safeAsk.total.toFixed(4)}
+                        </div>
+                        <div
+                          className="absolute right-0 top-0 h-full bg-red-500/10"
+                          style={{ width: `${safeAsk.percentage}%` }}
+                        />
+                      </div>
+                    );
+                  })}
               </div>
 
               {/* Spread indicator */}
               <div className="col-span-3 text-center text-sm text-muted-foreground py-2 border-y">
-                Spread:{" "}
-                {processedData.asks[0] && processedData.bids[0]
-                  ? (
-                      processedData.asks[0].price - processedData.bids[0].price
-                    ).toFixed(2)
-                  : "--"}
-                (
-                {processedData.asks?.[0]?.price &&
-                processedData.bids?.[0]?.price
-                  ? (
-                      ((processedData.asks[0].price -
-                        processedData.bids[0].price) /
-                        (processedData.bids[0].price || 1)) *
-                      100
-                    ).toFixed(3)
-                  : "--"}
-                %)
+                Spread: {(spread?.absolute ?? 0).toFixed(2)}(
+                {(spread?.percentage ?? 0).toFixed(3)}%)
               </div>
 
               {/* Bids (buy orders) */}
               <div className="col-span-3">
-                {processedData.bids.map((bid, index) => (
-                  <div
-                    key={`bid-${index}`}
-                    className="grid grid-cols-3 text-sm py-1 relative"
-                  >
-                    <div className="text-green-500">
-                      {bid?.price?.toFixed(2) || "0.00"}
-                    </div>
-                    <div className="text-center">
-                      {bid?.size?.toFixed(4) || "0.0000"}
-                    </div>
-                    <div className="text-right">
-                      {bid?.total?.toFixed(4) || "0.0000"}
-                    </div>
+                {(processedData.bids || []).map((bid, index) => {
+                  // Ensure bid has all required properties
+                  const safeBid = {
+                    price: bid?.price ?? 0,
+                    size: bid?.size ?? 0,
+                    total: bid?.total ?? 0,
+                    percentage: bid?.percentage ?? 0,
+                  };
+
+                  return (
                     <div
-                      className="absolute right-0 top-0 h-full bg-green-500/10"
-                      style={{ width: `${bid?.percentage || 0}%` }}
-                    />
-                  </div>
-                ))}
+                      key={`bid-${index}`}
+                      className="grid grid-cols-3 text-sm py-1 relative"
+                    >
+                      <div className="text-green-500">
+                        {safeBid.price.toFixed(2)}
+                      </div>
+                      <div className="text-center">
+                        {safeBid.size.toFixed(4)}
+                      </div>
+                      <div className="text-right">
+                        {safeBid.total.toFixed(4)}
+                      </div>
+                      <div
+                        className="absolute right-0 top-0 h-full bg-green-500/10"
+                        style={{ width: `${safeBid.percentage}%` }}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </TabsContent>
@@ -208,10 +279,11 @@ const OrderbookVisualization = ({
 
                 {/* Asks depth curve */}
                 <path
-                  d={`M${350},${350} ${processedData.asks
+                  d={`M${350},${350} ${(processedData.asks || [])
                     .map((ask, i) => {
-                      const x = 350 + i * (350 / processedData.asks.length);
-                      const y = 350 - (ask.percentage / 100) * 350;
+                      const x =
+                        350 + i * (350 / (processedData.asks?.length || 1));
+                      const y = 350 - ((ask?.percentage ?? 0) / 100) * 350;
                       return `L${x},${y}`;
                     })
                     .join(" ")} L700,350 Z`}
@@ -222,11 +294,12 @@ const OrderbookVisualization = ({
 
                 {/* Bids depth curve */}
                 <path
-                  d={`M${350},${350} ${processedData.bids
+                  d={`M${350},${350} ${(processedData.bids || [])
                     .map((bid, i) => {
                       const x =
-                        350 - (i + 1) * (350 / processedData.bids.length);
-                      const y = 350 - ((bid?.percentage || 0) / 100) * 350;
+                        350 -
+                        (i + 1) * (350 / (processedData.bids?.length || 1));
+                      const y = 350 - ((bid?.percentage ?? 0) / 100) * 350;
                       return `L${x},${y}`;
                     })
                     .join(" ")} L0,350 Z`}
@@ -270,3 +343,5 @@ const OrderbookVisualization = ({
 };
 
 export default OrderbookVisualization;
+
+// This function is not used and can be removed
